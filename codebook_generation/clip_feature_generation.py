@@ -1,4 +1,5 @@
-import argparse
+import hydra
+from omegaconf import DictConfig
 import os
 from pathlib import Path
 import numpy as np
@@ -13,7 +14,7 @@ import clip_encoder as clip
 from PIL import Image
 import yaml
 import torch
-from omegaconf import OmegaConf
+#from omegaconf import OmegaConf # Already imported DictConfig
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 import numpy as np
 
@@ -99,67 +100,39 @@ class ImageNetDataset(Dataset):
 
         return [image, image_ids]
 
-def get_args_parser():
-    parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
-    parser.add_argument(
-        "--batch_size",
-        default=64,
-        type=int,
-        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",
-    )
-    # Model parameters
-    parser.add_argument("--model", default="llama7B", type=str, metavar="MODEL", help="Name of model to train")
-    parser.add_argument("--max_seq_len", type=int, default=512, metavar="LENGTH", help="the maximum sequence length")
-    parser.add_argument("--image_size", type=int, default=256, help="Decoding Loss")
-    parser.add_argument("--n_class", default=1000, type=int)    
-    # Dataset parameters
-    parser.add_argument("--data_path", default="instruction_dataset/", type=str, help="dataset path")
-    parser.add_argument("--output_dir", default="./output_dir", help="path where to save, empty for no saving")
-    parser.add_argument("--log_dir", default="./output_dir", help="path where to tensorboard log")
-    parser.add_argument("--device", default="cuda", help="device to use for training / testing")
-    parser.add_argument("--seed", default=0, type=int)
+@hydra.main(config_path="conf", config_name="config")
+def main(cfg: DictConfig):
 
-    parser.add_argument("--num_workers", default=0, type=int)
-    parser.add_argument(
-        "--pin_mem",
-        action="store_true",
-        help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",
-    )
-    parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem")
-    parser.set_defaults(pin_mem=True)
-
-    # distributed training parameters
-    parser.add_argument("--world_size", default=1, type=int, help="number of distributed processes")
-    parser.add_argument("--local_rank", default=-1, type=int)
-    parser.add_argument("--dist_on_itp", action="store_true")
-    parser.add_argument("--dist_url", default="env://", help="url used to set up distributed training")
-    parser.add_argument("--imagenet_path", default="", type=str, help="path of llama model")
-    parser.add_argument("--save_path", default="Imagenet_clip_features", type=str, help="path of llama model")
-    return parser
-
-
-def main(args):
-
-    misc.init_distributed_mode(args)
+    misc.init_distributed_mode(cfg) # TODO: This might need adjustment depending on how distributed training is handled with Hydra
 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(", ", ",\n"))
+    print("{}".format(cfg).replace(", ", ",\n")) # TODO: OmegaConf.to_yaml(cfg) might be cleaner
 
-    device = torch.device(args.device)
-    seed = args.seed + misc.get_rank()
+    device = torch.device(cfg.clip_feature_generation.device) # Adjusted path
+    seed = cfg.clip_feature_generation.seed + misc.get_rank() # Adjusted path
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     cudnn.benchmark = True
 
     dataset_train = ImageNetDataset(
-        data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="train", device=device
+        data_root=cfg.clip_feature_generation.data_dir, # Adjusted path, assuming imagenet_path is data_dir
+        image_size=cfg.clip_feature_generation.image_size, # Adjusted path
+        max_words=cfg.clip_feature_generation.max_seq_len, # Adjusted path
+        n_class=cfg.clip_feature_generation.n_class, # Adjusted path
+        partition="train",
+        device=device
     )
     dataset_val = ImageNetDataset(
-        data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="val", device=device
+        data_root=cfg.clip_feature_generation.data_dir, # Adjusted path
+        image_size=cfg.clip_feature_generation.image_size, # Adjusted path
+        max_words=cfg.clip_feature_generation.max_seq_len, # Adjusted path
+        n_class=cfg.clip_feature_generation.n_class, # Adjusted path
+        partition="val",
+        device=device
     )
 
-    if True:  # args.distributed:
+    if True:  # cfg.distributed: # TODO: This might need adjustment
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
         sampler_train = torch.utils.data.DistributedSampler(
@@ -174,34 +147,34 @@ def main(args):
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
 
-    if global_rank == 0 and args.log_dir is not None:
-        os.makedirs(args.log_dir, exist_ok=True)
-        log_writer = SummaryWriter(log_dir=args.log_dir)
+    if global_rank == 0 and cfg.clip_feature_generation.log_dir is not None: # Adjusted path
+        os.makedirs(cfg.clip_feature_generation.log_dir, exist_ok=True) # Adjusted path
+        log_writer = SummaryWriter(log_dir=cfg.clip_feature_generation.log_dir) # Adjusted path
     else:
         log_writer = None
 
     data_loader = torch.utils.data.DataLoader(
         dataset_train,
         sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
+        batch_size=cfg.clip_feature_generation.batch_size, # Adjusted path
+        num_workers=cfg.clip_feature_generation.num_workers, # Adjusted path
+        pin_memory=cfg.clip_feature_generation.pin_mem, # Adjusted path
         drop_last=False,
     )
 
-    #config = load_config(args.vq_config_path, display=True)
-    model, _ = clip.load("ViT-L/14", device=DEVICE)
+    #config = load_config(cfg.vq_config_path, display=True) # This line was commented out
+    model, _ = clip.load(cfg.clip_feature_generation.model_name, device=DEVICE) # Adjusted path
     model.to(device)
 
 
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])#, find_unused_parameters=True)
+    if cfg.distributed: # TODO: This might need adjustment
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[cfg.gpu])#, find_unused_parameters=True) # TODO: This might need adjustment
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = ""
     print_freq = 10
     
-    #os.makedirs(args.save_path, exist_ok=True)
+    #os.makedirs(cfg.clip_feature_generation.output_dir, exist_ok=True) # Adjusted path, save_path is now output_dir
 
     model.eval()
     for data_iter_step, [images, image_id] in enumerate(
@@ -213,14 +186,9 @@ def main(args):
 
         for j in range(0, z_flattened.shape[0]):
             save_dir = "/".join(image_id[j].split("/")[:-1])
-            os.makedirs(os.path.join(args.save_path, save_dir), exist_ok=True)
-            np.save(os.path.join(args.save_path, image_id[j][:-5]), np.array(z_flattened[j].cpu().data))
+            os.makedirs(os.path.join(cfg.clip_feature_generation.output_dir, save_dir), exist_ok=True) # Adjusted path
+            np.save(os.path.join(cfg.clip_feature_generation.output_dir, image_id[j][:-5]), np.array(z_flattened[j].cpu().data)) # Adjusted path
         
 
 if __name__ == "__main__":
-
-    args = get_args_parser()
-    args = args.parse_args()
-    if args.output_dir:
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    main(args)
+    main()

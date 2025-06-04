@@ -44,6 +44,86 @@ cd codebook_generation
 sh run.sh
 ```
 
+### Hydra Configuration for Codebook Generation
+
+The codebook generation scripts (`clip_feature_generation.py` and `minibatch_kmeans_per_class.py`) use [Hydra](https://hydra.cc/) for configuration management. This allows for flexible configuration through YAML files and command-line overrides.
+
+**Directory Structure:**
+
+Configuration files are located in `codebook_generation/conf`:
+```
+codebook_generation/
+├── conf/
+│   ├── config.yaml                         # Main Hydra config file
+│   ├── clip_feature_generation.yaml      # Defaults for clip_feature_generation.py
+│   └── minibatch_kmeans_per_class.yaml   # Defaults for minibatch_kmeans_per_class.py
+├── clip_feature_generation.py
+├── minibatch_kmeans_per_class.py
+└── run.sh
+```
+
+**Configuration Files:**
+
+*   **`config.yaml`**: This is the main configuration file that Hydra loads. It defines default configurations for the two scripts.
+    ```yaml
+    defaults:
+      - clip_feature_generation: default
+      - minibatch_kmeans_per_class: default
+
+    hydra:
+      run:
+        dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    ```
+*   **`clip_feature_generation.yaml`**: Contains default parameters for `clip_feature_generation.py`.
+    ```yaml
+    # @package _group_
+    name: "default"
+    data_dir: "data/images"                 # Path to the ImageNet dataset (can be overridden by IMAGENET_PATH env var via run.sh or direct override)
+    output_dir: "data/clip_features"        # Directory to save CLIP features
+    batch_size: 32
+    model_name: "ViT-B/32"
+    device: "cuda"
+    # ... other parameters ...
+    ```
+*   **`minibatch_kmeans_per_class.yaml`**: Contains default parameters for `minibatch_kmeans_per_class.py`.
+    ```yaml
+    # @package _group_
+    name: "default"
+    feature_dir: "data/clip_features"       # Directory where CLIP features are stored
+    output_dir: "data/codebooks"            # Directory to save the generated codebooks
+    n_clusters: 16
+    batch_size: 256
+    random_state: 42
+    # ... other parameters ...
+    ```
+
+**Running with Hydra:**
+
+The `codebook_generation/run.sh` script executes the pipeline using the default configurations defined in the YAML files.
+```bash
+imagenet_path="IMAGENET_PATH" # Set your ImageNet path
+cd codebook_generation
+sh run.sh
+```
+The `imagenet_path` environment variable is used by `run.sh` and is expected to point to your ImageNet dataset. The `data_dir` in `clip_feature_generation.yaml` should correspond to this path.
+
+**Overriding Configuration:**
+
+You can override any configuration parameter directly from the command line.
+
+*   **Override a top-level parameter:**
+    ```bash
+    python codebook_generation/clip_feature_generation.py batch_size=64
+    ```
+*   **Override a parameter within a group:**
+    ```bash
+    python codebook_generation/clip_feature_generation.py clip_feature_generation.batch_size=64 clip_feature_generation.output_dir="new_features_dir"
+    python codebook_generation/minibatch_kmeans_per_class.py minibatch_kmeans_per_class.n_clusters=32
+    ```
+    Note: When calling a script directly, you refer to its configuration group by its name (e.g., `clip_feature_generation.batch_size`).
+
+This system allows you to easily manage different configurations and experiment with parameters without modifying the core scripts. Refer to the Hydra documentation for more advanced features like multirun.
+
 #### VQGAN-LC Training
 Training VQGAN-LC with a codebook size 100K with the following script:
 

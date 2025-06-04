@@ -1,0 +1,7 @@
+# @package _group_
+name: "default"
+feature_dir: "data/clip_features"
+output_dir: "data/codebooks"
+n_clusters: 16
+batch_size: 256
+random_state: 42

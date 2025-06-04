@@ -1,0 +1,7 @@
+# @package _group_
+name: "default"
+data_dir: "data/images"
+output_dir: "data/clip_features"
+batch_size: 32
+model_name: "ViT-B/32"
+device: "cuda"

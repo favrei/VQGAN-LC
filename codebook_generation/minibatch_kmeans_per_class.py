@@ -3,17 +3,11 @@ import numpy as np
 import torch
 from kmeans_pytorch import kmeans, kmeans_predict
 import os
+import hydra
+from omegaconf import DictConfig
+import numpy as np # Added import
 
-import argparse
-parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
-parser.add_argument("--start", default=0, type=int)
-parser.add_argument("--end", default=1000, type=int)
-parser.add_argument("--n_class", default=1000, type=int)
-parser.add_argument("--k", default=100, type=int)
-parser.add_argument("--downsample", default=4, type=int)
-parser.add_argument("--imagenet_feature_path", default="", type=str)
-parser.add_argument("--save_dir", default="clustering_centers", type=str)
-args = parser.parse_args()
+# Removed argparse code
 
 imagenet_dict = {"0": ["n01440764", "tench"], "1": ["n01443537", "goldfish"], "2": ["n01484850", "great_white_shark"], "3": ["n01491361", "tiger_shark"], "4": ["n01494475", "hammerhead"], "5": ["n01496331", "electric_ray"], "6": ["n01498041", "stingray"], "7": ["n01514668", "cock"], "8": ["n01514859", "hen"], "9": ["n01518878", "ostrich"], "10": ["n01530575", "brambling"], "11": ["n01531178", "goldfinch"], "12": ["n01532829", "house_finch"], "13": ["n01534433", "junco"], "14": ["n01537544", "indigo_bunting"], "15": ["n01558993", "robin"], "16": ["n01560419", "bulbul"], "17": ["n01580077", "jay"], "18": ["n01582220", "magpie"], "19": ["n01592084", "chickadee"], "20": ["n01601694", "water_ouzel"], "21": ["n01608432", "kite"], "22": ["n01614925", "bald_eagle"], "23": ["n01616318", "vulture"], "24": ["n01622779", "great_grey_owl"], "25": ["n01629819", "European_fire_salamander"], "26": ["n01630670", "common_newt"], "27": ["n01631663", "eft"], "28": ["n01632458", "spotted_salamander"], "29": ["n01632777", "axolotl"], "30": ["n01641577", "bullfrog"], "31": ["n01644373", "tree_frog"], "32": ["n01644900", "tailed_frog"], "33": ["n01664065", "loggerhead"], "34": ["n01665541", "leatherback_turtle"], "35": ["n01667114", "mud_turtle"], "36": ["n01667778", "terrapin"], "37": ["n01669191", "box_turtle"], "38": ["n01675722", "banded_gecko"], "39": ["n01677366", "common_iguana"], "40": ["n01682714", "American_chameleon"], "41": ["n01685808", "whiptail"], "42": ["n01687978", "agama"], "43": ["n01688243", "frilled_lizard"], "44": ["n01689811", "alligator_lizard"], "45": ["n01692333", "Gila_monster"], "46": ["n01693334", "green_lizard"], "47": ["n01694178", "African_chameleon"], "48": ["n01695060", "Komodo_dragon"], "49": ["n01697457", "African_crocodile"], 
     "50": ["n01698640", "American_alligator"], "51": ["n01704323", "triceratops"], "52": ["n01728572", "thunder_snake"], "53": ["n01728920", "ringneck_snake"], "54": ["n01729322", "hognose_snake"], "55": ["n01729977", "green_snake"], "56": ["n01734418", "king_snake"], "57": ["n01735189", "garter_snake"], "58": ["n01737021", "water_snake"], "59": ["n01739381", "vine_snake"], "60": ["n01740131", "night_snake"], "61": ["n01742172", "boa_constrictor"], "62": ["n01744401", "rock_python"], "63": ["n01748264", "Indian_cobra"], "64": ["n01749939", "green_mamba"], "65": ["n01751748", "sea_snake"], "66": ["n01753488", "horned_viper"], "67": ["n01755581", "diamondback"], "68": ["n01756291", "sidewinder"], "69": ["n01768244", "trilobite"], "70": ["n01770081", "harvestman"], "71": ["n01770393", "scorpion"], "72": ["n01773157", "black_and_gold_garden_spider"], "73": ["n01773549", "barn_spider"], "74": ["n01773797", "garden_spider"], "75": ["n01774384", "black_widow"], "76": ["n01774750", "tarantula"], "77": ["n01775062", "wolf_spider"], "78": ["n01776313", "tick"], "79": ["n01784675", "centipede"], "80": ["n01795545", "black_grouse"], "81": ["n01796340", "ptarmigan"], "82": ["n01797886", "ruffed_grouse"], "83": ["n01798484", "prairie_chicken"], "84": ["n01806143", "peacock"], "85": ["n01806567", "quail"], "86": ["n01807496", "partridge"], "87": ["n01817953", "African_grey"], "88": ["n01818515", "macaw"], "89": ["n01819313", "sulphur-crested_cockatoo"], "90": ["n01820546", "lorikeet"], "91": ["n01824575", "coucal"], "92": ["n01828970", "bee_eater"], "93": ["n01829413", "hornbill"], "94": ["n01833805", "hummingbird"], "95": ["n01843065", "jacamar"], "96": ["n01843383", "toucan"], "97": ["n01847000", "drake"], "98": ["n01855032", "red-breasted_merganser"], "99": ["n01855672", "goose"], 
@@ -45,47 +39,54 @@ imagenet_dict = {"0": ["n01440764", "tench"], "1": ["n01443537", "goldfish"], "2
     "900": ["n04562935", "water_tower"], "901": ["n04579145", "whiskey_jug"], "902": ["n04579432", "whistle"], "903": ["n04584207", "wig"], "904": ["n04589890", "window_screen"], "905": ["n04590129", "window_shade"], "906": ["n04591157", "Windsor_tie"], "907": ["n04591713", "wine_bottle"], "908": ["n04592741", "wing"], "909": ["n04596742", "wok"], "910": ["n04597913", "wooden_spoon"], "911": ["n04599235", "wool"], "912": ["n04604644", "worm_fence"], "913": ["n04606251", "wreck"], "914": ["n04612504", "yawl"], "915": ["n04613696", "yurt"], "916": ["n06359193", "web_site"], "917": ["n06596364", "comic_book"], "918": ["n06785654", "crossword_puzzle"], "919": ["n06794110", "street_sign"], "920": ["n06874185", "traffic_light"], "921": ["n07248320", "book_jacket"], "922": ["n07565083", "menu"], "923": ["n07579787", "plate"], "924": ["n07583066", "guacamole"], "925": ["n07584110", "consomme"], "926": ["n07590611", "hot_pot"], "927": ["n07613480", "trifle"], "928": ["n07614500", "ice_cream"], "929": ["n07615774", "ice_lolly"], "930": ["n07684084", "French_loaf"], "931": ["n07693725", "bagel"], "932": ["n07695742", "pretzel"], "933": ["n07697313", "cheeseburger"], "934": ["n07697537", "hotdog"], "935": ["n07711569", "mashed_potato"], "936": ["n07714571", "head_cabbage"], "937": ["n07714990", "broccoli"], "938": ["n07715103", "cauliflower"], "939": ["n07716358", "zucchini"], "940": ["n07716906", "spaghetti_squash"], "941": ["n07717410", "acorn_squash"], "942": ["n07717556", "butternut_squash"], "943": ["n07718472", "cucumber"], "944": ["n07718747", "artichoke"], "945": ["n07720875", "bell_pepper"], "946": ["n07730033", "cardoon"], "947": ["n07734744", "mushroom"], "948": ["n07742313", "Granny_Smith"], "949": ["n07745940", "strawberry"], 
     "950": ["n07747607", "orange"], "951": ["n07749582", "lemon"], "952": ["n07753113", "fig"], "953": ["n07753275", "pineapple"], "954": ["n07753592", "banana"], "955": ["n07754684", "jackfruit"], "956": ["n07760859", "custard_apple"], "957": ["n07768694", "pomegranate"], "958": ["n07802026", "hay"], "959": ["n07831146", "carbonara"], "960": ["n07836838", "chocolate_sauce"], "961": ["n07860988", "dough"], "962": ["n07871810", "meat_loaf"], "963": ["n07873807", "pizza"], "964": ["n07875152", "potpie"], "965": ["n07880968", "burrito"], "966": ["n07892512", "red_wine"], "967": ["n07920052", "espresso"], "968": ["n07930864", "cup"], "969": ["n07932039", "eggnog"], "970": ["n09193705", "alp"], "971": ["n09229709", "bubble"], "972": ["n09246464", "cliff"], "973": ["n09256479", "coral_reef"], "974": ["n09288635", "geyser"], "975": ["n09332890", "lakeside"], "976": ["n09399592", "promontory"], "977": ["n09421951", "sandbar"], "978": ["n09428293", "seashore"], "979": ["n09468604", "valley"], "980": ["n09472597", "volcano"], "981": ["n09835506", "ballplayer"], "982": ["n10148035", "groom"], "983": ["n10565667", "scuba_diver"], "984": ["n11879895", "rapeseed"], "985": ["n11939491", "daisy"], "986": ["n12057211", "yellow_lady's_slipper"], "987": ["n12144580", "corn"], "988": ["n12267677", "acorn"], "989": ["n12620546", "hip"], "990": ["n12768682", "buckeye"], "991": ["n12985857", "coral_fungus"], "992": ["n12998815", "agaric"], "993": ["n13037406", "gyromitra"], "994": ["n13040303", "stinkhorn"], "995": ["n13044778", "earthstar"], "996": ["n13052670", "hen-of-the-woods"], "997": ["n13054560", "bolete"], "998": ["n13133613", "ear"], "999": ["n15075141", "toilet_tissue"]}
 
-save_path = args.save_dir
-os.makedirs(save_path, exist_ok=True)
-if args.n_class == 300:
-    select_classes = np.load("select_300_class.npy")
-    print("300 Selected Classes")
-else:
-    select_classes = np.arange(0, args.n_class)
-    print("The first %d classes"%(args.n_class))
-count = args.start
-k=args.k
-#for i in range(0, 1000):
-for i in select_classes[args.start:args.end]:
-    class_label = i
-    count = count + 1
-    if os.path.exists(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label))):
-        continue
-    print(count, ", Processing:", class_label, "Loading")
-    dir_path = os.path.join(args.imagenet_feature_path, imagenet_dict[str(np.int64(class_label))][0])
-    files = os.listdir(dir_path)
-    #features = []
-    #for file in files:
-    #    features.append(np.load(os.path.join(dir_path, file)))
+@hydra.main(config_path="conf", config_name="config")
+def main(cfg: DictConfig):
+    save_path = cfg.minibatch_kmeans_per_class.output_dir # Adjusted path
+    os.makedirs(save_path, exist_ok=True)
+    if cfg.minibatch_kmeans_per_class.n_class == 300: # Adjusted path
+        select_classes = np.load("select_300_class.npy") # This file might be missing
+        print("300 Selected Classes")
+    else:
+        select_classes = np.arange(0, cfg.minibatch_kmeans_per_class.n_class) # Adjusted path
+        print("The first %d classes"%(cfg.minibatch_kmeans_per_class.n_class)) # Adjusted path
+    count = cfg.minibatch_kmeans_per_class.start # Adjusted path
+    k = cfg.minibatch_kmeans_per_class.n_clusters # Adjusted path, assuming k is n_clusters
+    #for i in range(0, 1000):
+    for i in select_classes[cfg.minibatch_kmeans_per_class.start:cfg.minibatch_kmeans_per_class.end]: # Adjusted path
+        class_label = i
+        count = count + 1
+        if os.path.exists(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label))):
+            continue
+        print(count, ", Processing:", class_label, "Loading")
+        dir_path = os.path.join(cfg.minibatch_kmeans_per_class.feature_dir, imagenet_dict[str(np.int64(class_label))][0]) # Adjusted path
+        files = os.listdir(dir_path)
+        #features = []
+        #for file in files:
+        #    features.append(np.load(os.path.join(dir_path, file)))
+        features = [torch.from_numpy(np.load(os.path.join(dir_path, file))) for file in files]
+        features = torch.cat(features, dim=0)
+        #features = features.view(-1, 16, 16, 768)[:, ::4, ::4, :]
+        features = features.view(-1, 16, 16, 768).contiguous().permute(0, 3, 1, 2)
+        features = torch.nn.AvgPool2d((cfg.minibatch_kmeans_per_class.downsample, cfg.minibatch_kmeans_per_class.downsample))(features.float()) # Adjusted path
+        features = features.contiguous().permute(0, 2, 3, 1)
+        print(features.shape)
+
+        print(count, ", Processing:", class_label, "Clustering")
+        features = features.reshape(-1, 768)
+        #x = torch.from_numpy(features)
+        # TODO: device should be configurable
+        label, center  = kmeans(X=features, num_clusters=k, device=torch.device('cuda:0'), random_state=cfg.minibatch_kmeans_per_class.random_state) # Added random_state
+        np.save(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label)), center.data)
+
+
+    # The following code aggregates results and might need to be adjusted or moved
+    # depending on the desired workflow with Hydra (e.g., separate script for aggregation)
+    dir_path = cfg.minibatch_kmeans_per_class.output_dir # Adjusted path
+    files = os.listdir(cfg.minibatch_kmeans_per_class.output_dir) # Adjusted path
+
     features = [torch.from_numpy(np.load(os.path.join(dir_path, file))) for file in files]
     features = torch.cat(features, dim=0)
-    #features = features.view(-1, 16, 16, 768)[:, ::4, ::4, :]
-    features = features.view(-1, 16, 16, 768).contiguous().permute(0, 3, 1, 2)
-    features = torch.nn.AvgPool2d((args.downsample, args.downsample))(features.float())
-    features = features.contiguous().permute(0, 2, 3, 1)
-    print(features.shape)
+    torch.save(features, "clustering_codebook_imagenet1k_100000.pth") # Output filename might need to be configurable
 
-    print(count, ", Processing:", class_label, "Clustering")
-    features = features.reshape(-1, 768)
-    #x = torch.from_numpy(features)
-    label, center  = kmeans(X=features, num_clusters=k, device=torch.device('cuda:0'))
-    np.save(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label)), center.data)
-
-
-
-dir_path = args.save_dir
-files = os.listdir(args.save_dir)
-
-features = [torch.from_numpy(np.load(os.path.join(dir_path, file))) for file in files]
-features = torch.cat(features, dim=0)
-torch.save(features, "clustering_codebook_imagenet1k_100000.pth")
+if __name__ == "__main__":
+    main()

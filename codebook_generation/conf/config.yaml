@@ -1,0 +1,7 @@
+defaults:
+  - clip_feature_generation: default
+  - minibatch_kmeans_per_class: default
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

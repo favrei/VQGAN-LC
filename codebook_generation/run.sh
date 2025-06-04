@@ -1,11 +1,12 @@
 
 ####Extract path-level features of training images
-CUDA_VISIBLE_DEVICES=0 python clip_feature_generation.py --batch_size 4096 --imagenet_path $imagenet_path
+# imagenet_path is expected to be set as an environment variable
+# The script will use hydra config for other parameters.
+# Ensure 'data_dir' in conf/clip_feature_generation.yaml points to $imagenet_path or is overridden.
+CUDA_VISIBLE_DEVICES=0 python clip_feature_generation.py
 
 ####Cluster the features to generate initialized codebook
-CUDA_VISIBLE_DEVICES=0 python minibatch_kmeans_per_class.py --start 0 \
-                                                            --end 1000 \
-                                                            --n_class 1000 \
-                                                            --downsample 4 \
-                                                            --save_dir "clustering_centers_1000" \
-                                                            --imagenet_feature_path "Imagenet_clip_features/train"
+# The script will use hydra config for parameters.
+# Ensure 'feature_dir' in conf/minibatch_kmeans_per_class.yaml points to the output of clip_feature_generation.py
+# and 'output_dir' points to the desired location for clustering centers.
+CUDA_VISIBLE_DEVICES=0 python minibatch_kmeans_per_class.py
