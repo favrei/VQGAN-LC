@@ -1,7 +1,6 @@
-from sklearn.cluster import MiniBatchKMeans
 import numpy as np
 import torch
-from kmeans_pytorch import kmeans, kmeans_predict
+import faiss
 import os
 
 import argparse
@@ -13,6 +12,10 @@ parser.add_argument("--k", default=100, type=int)
 parser.add_argument("--downsample", default=4, type=int)
 parser.add_argument("--imagenet_feature_path", default="", type=str)
 parser.add_argument("--save_dir", default="clustering_centers", type=str)
+parser.add_argument("--max_points", default=50000, type=int,
+                    help="maximum feature vectors used for clustering")
+parser.add_argument("--max_images", default=1000, type=int,
+                    help="cap on number of image feature files loaded per class")
 args = parser.parse_args()
 
 imagenet_dict = {"0": ["n01440764", "tench"], "1": ["n01443537", "goldfish"], "2": ["n01484850", "great_white_shark"], "3": ["n01491361", "tiger_shark"], "4": ["n01494475", "hammerhead"], "5": ["n01496331", "electric_ray"], "6": ["n01498041", "stingray"], "7": ["n01514668", "cock"], "8": ["n01514859", "hen"], "9": ["n01518878", "ostrich"], "10": ["n01530575", "brambling"], "11": ["n01531178", "goldfinch"], "12": ["n01532829", "house_finch"], "13": ["n01534433", "junco"], "14": ["n01537544", "indigo_bunting"], "15": ["n01558993", "robin"], "16": ["n01560419", "bulbul"], "17": ["n01580077", "jay"], "18": ["n01582220", "magpie"], "19": ["n01592084", "chickadee"], "20": ["n01601694", "water_ouzel"], "21": ["n01608432", "kite"], "22": ["n01614925", "bald_eagle"], "23": ["n01616318", "vulture"], "24": ["n01622779", "great_grey_owl"], "25": ["n01629819", "European_fire_salamander"], "26": ["n01630670", "common_newt"], "27": ["n01631663", "eft"], "28": ["n01632458", "spotted_salamander"], "29": ["n01632777", "axolotl"], "30": ["n01641577", "bullfrog"], "31": ["n01644373", "tree_frog"], "32": ["n01644900", "tailed_frog"], "33": ["n01664065", "loggerhead"], "34": ["n01665541", "leatherback_turtle"], "35": ["n01667114", "mud_turtle"], "36": ["n01667778", "terrapin"], "37": ["n01669191", "box_turtle"], "38": ["n01675722", "banded_gecko"], "39": ["n01677366", "common_iguana"], "40": ["n01682714", "American_chameleon"], "41": ["n01685808", "whiptail"], "42": ["n01687978", "agama"], "43": ["n01688243", "frilled_lizard"], "44": ["n01689811", "alligator_lizard"], "45": ["n01692333", "Gila_monster"], "46": ["n01693334", "green_lizard"], "47": ["n01694178", "African_chameleon"], "48": ["n01695060", "Komodo_dragon"], "49": ["n01697457", "African_crocodile"], 
@@ -63,11 +66,9 @@ for i in select_classes[args.start:args.end]:
         continue
     print(count, ", Processing:", class_label, "Loading")
     dir_path = os.path.join(args.imagenet_feature_path, imagenet_dict[str(np.int64(class_label))][0])
-    files = os.listdir(dir_path)
-    #features = []
-    #for file in files:
-    #    features.append(np.load(os.path.join(dir_path, file)))
-    features = [torch.from_numpy(np.load(os.path.join(dir_path, file))) for file in files]
+    files = os.listdir(dir_path)[:args.max_images]
+    features = [torch.from_numpy(np.load(os.path.join(dir_path, file)))
+                for file in files]
     features = torch.cat(features, dim=0)
     #features = features.view(-1, 16, 16, 768)[:, ::4, ::4, :]
     features = features.view(-1, 16, 16, 768).contiguous().permute(0, 3, 1, 2)
@@ -77,9 +78,16 @@ for i in select_classes[args.start:args.end]:
 
     print(count, ", Processing:", class_label, "Clustering")
     features = features.reshape(-1, 768)
-    #x = torch.from_numpy(features)
-    label, center  = kmeans(X=features, num_clusters=k, device=torch.device('cuda:0'))
-    np.save(os.path.join(save_path, "class_center_%d_%d.npy"%(count, class_label)), center.data)
+    if features.shape[0] > args.max_points:
+        perm = torch.randperm(features.shape[0])[:args.max_points]
+        features = features[perm]
+
+    feat_np = features.cpu().numpy().astype('float32')
+    use_gpu = torch.cuda.is_available()
+    kmeans_obj = faiss.Kmeans(768, k, niter=20, verbose=False, gpu=use_gpu)
+    kmeans_obj.train(feat_np)
+    center = torch.from_numpy(kmeans_obj.centroids)
+    np.save(os.path.join(save_path, "class_center_%d_%d.npy" % (count, class_label)), center)
 
 
 
