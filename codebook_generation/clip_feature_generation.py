@@ -14,6 +14,7 @@ from PIL import Image
 import yaml
 import torch
 from omegaconf import OmegaConf
+from torchvision import transforms
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 import numpy as np
 
@@ -63,7 +64,7 @@ def preprocess_vqgan(x):
   return x
 
 class ImageNetDataset(Dataset):
-    def __init__(self, data_root, image_size, max_words=30, n_class=1000, partition="train", device="cpu"):
+    def __init__(self, data_root, image_size, max_words=30, n_class=1000, partition="train", device="cpu", backbone="clip"):
 
         self.max_words = max_words
         self.device = device
@@ -71,7 +72,15 @@ class ImageNetDataset(Dataset):
 
         self.data_root = data_root
 
-        _, self.preprocess = clip.load("ViT-L/14", device=DEVICE)
+        if backbone == "dinov2":
+            self.preprocess = transforms.Compose([
+                transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+            ])
+        else:
+            _, self.preprocess = clip.load("ViT-L/14", device=DEVICE)
 
         self.image_ids = []
         self.class_labels = []
@@ -135,6 +144,18 @@ def get_args_parser():
     parser.add_argument("--dist_url", default="env://", help="url used to set up distributed training")
     parser.add_argument("--imagenet_path", default="", type=str, help="path of llama model")
     parser.add_argument("--save_path", default="Imagenet_clip_features", type=str, help="path of llama model")
+    parser.add_argument(
+        "--backbone",
+        default="clip",
+        choices=["clip", "dinov2"],
+        help="feature extractor backbone"
+    )
+    parser.add_argument(
+        "--dinov2_model",
+        default="dinov2_vitb14",
+        type=str,
+        help="DINOv2 model variant"
+    )
     return parser
 
 
@@ -153,10 +174,22 @@ def main(args):
     cudnn.benchmark = True
 
     dataset_train = ImageNetDataset(
-        data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="train", device=device
+        data_root=args.imagenet_path,
+        image_size=args.image_size,
+        max_words=args.max_seq_len,
+        n_class=args.n_class,
+        partition="train",
+        device=device,
+        backbone=args.backbone,
     )
     dataset_val = ImageNetDataset(
-        data_root=args.imagenet_path, image_size=args.image_size, max_words=args.max_seq_len, n_class=args.n_class, partition="val", device=device
+        data_root=args.imagenet_path,
+        image_size=args.image_size,
+        max_words=args.max_seq_len,
+        n_class=args.n_class,
+        partition="val",
+        device=device,
+        backbone=args.backbone,
     )
 
     if True:  # args.distributed:
@@ -190,7 +223,10 @@ def main(args):
     )
 
     #config = load_config(args.vq_config_path, display=True)
-    model, _ = clip.load("ViT-L/14", device=DEVICE)
+    if args.backbone == "dinov2":
+        model = torch.hub.load("facebookresearch/dinov2", args.dinov2_model)
+    else:
+        model, _ = clip.load("ViT-L/14", device=DEVICE)
     model.to(device)
 
 
@@ -209,7 +245,10 @@ def main(args):
     ):
         images = images.to(device)
         with torch.no_grad():
-            _, z_flattened = model.encode_image(images)
+            if args.backbone == "dinov2":
+                z_flattened = model.forward_features(images)["x_norm_patchtokens"]
+            else:
+                _, z_flattened = model.encode_image(images)
 
         for j in range(0, z_flattened.shape[0]):
             save_dir = "/".join(image_id[j].split("/")[:-1])

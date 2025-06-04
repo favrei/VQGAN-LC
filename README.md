@@ -42,6 +42,8 @@ The Initialized codebook should be first downloaded from our [Google Drive](http
 imagenet_path="IMAGENET PATH"
 cd codebook_generation
 sh run.sh
+# By default CLIP is used for feature extraction. To use DINOv2 instead,
+# pass `--backbone dinov2` to `clip_feature_generation.py`.
 ```
 
 #### VQGAN-LC Training
